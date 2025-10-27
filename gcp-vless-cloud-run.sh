@@ -476,7 +476,7 @@ prepare_config_files() {
         error "config.json not found."
     fi
     sed -i "s/PLACEHOLDER_UUID/$UUID/g" config.json
-    sed -i "s|/vless|$VLESS_PATH|g" run config.json
+    sed -i "s|/vless|$VLESS_PATH|g" config.json
     progress_bar 1
 }
 
