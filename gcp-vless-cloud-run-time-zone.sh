@@ -37,6 +37,32 @@ TELEGRAM_CHANNEL_ID=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_GROUP_ID=""
 
+# Time Variables (will be set in initialize_time_variables)
+START_EPOCH=""
+END_EPOCH=""
+START_LOCAL=""
+END_LOCAL=""
+
+# =================== Time Zone Function ===================
+# Set the time zone globally for the script
+export TZ="Asia/Yangon"
+
+# Helper function to format epoch time to local datetime
+fmt_dt(){ 
+    date -d @"$1" "+%d.%m.%Y %I:%M %p"; 
+}
+
+# Function to calculate and initialize time variables
+initialize_time_variables() {
+    START_EPOCH="$(date +%s)"
+    # Note: 5 hours is only for display/tracking, Cloud Run service is permanent unless deleted
+    END_EPOCH="$(( START_EPOCH + 5*3600 ))" 
+    START_LOCAL="$(fmt_dt "$START_EPOCH")"
+    END_LOCAL="$(fmt_dt "$END_EPOCH")"
+    log "Deployment validity times initialized (Asia/Yangon Time)."
+}
+# ==========================================================
+
 # ------------------------------------------------------------------------------
 # 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION)
 # ------------------------------------------------------------------------------
@@ -53,6 +79,7 @@ show_emojis() {
     EMOJI_DEPLOY="🚀"
     EMOJI_CHECK="📋"
     EMOJI_CLEAN="🧹"
+    EMOJI_CLOCK="⏱️"
 }
 
 # Beautiful Header/Banner (New Design: Fully enclosed box, adjusted to title width)
@@ -105,8 +132,8 @@ selected_info() {
 
 # Simple Progress Bar Function with #, ETA, and date/time - Persistent in Light Green
 progress_bar() {
-    local duration=${1:-3}  # Estimated duration in seconds
-    local width=30          # WIDTH
+    local duration=${1:-3}
+    local width=30
     local start=$(date +%s)
     local elapsed=0
     
@@ -423,6 +450,11 @@ show_config_summary() {
     else
         echo -e "${CYAN}${BOLD}Telegram:${NC}      Not configured"
     fi
+    
+    # Time Zone Summary Added
+    header "${EMOJI_CLOCK} Validity Period (Asia/Yangon)"
+    echo -e "${CYAN}${BOLD}Start Time:${NC}    $START_LOCAL"
+    echo -e "${CYAN}${BOLD}End Time (5hrs):${NC} $END_LOCAL"
     echo
     
     while true; do
@@ -476,7 +508,7 @@ prepare_config_files() {
         error "config.json not found."
     fi
     sed -i "s/PLACEHOLDER_UUID/$UUID/g" config.json
-    sed -i "s|/vless|$VLESS_PATH|g" run config.json
+    sed -i "s|/vless|$VLESS_PATH|g" config.json
     progress_bar 1
 }
 
@@ -578,7 +610,8 @@ deploy_to_cloud_run() {
     selected_info "Service URL: $service_url"
     selected_info "VLESS Share Link: $share_link"
 
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n\n🔗 [VLESS Link]($share_link)"
+    # Telegram message updated to include Start/End Times
+    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n\n⏱️ *Validity (Asia/Yangon)*:\n• Start: $START_LOCAL\n• End (5hrs): $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
     
     send_deployment_notification "$telegram_message"
 }
@@ -611,6 +644,10 @@ Memory: $MEMORY
 Service URL: $service_url
 VLESS Share Link: $share_link
 
+[Validity Period (Asia/Yangon)]
+Deployment Start: $START_LOCAL
+Expected End (5hrs): $END_LOCAL
+
 Deployment Date: $(date)
 Protocol: $PROTOCOL
 
@@ -627,6 +664,9 @@ EOF
 
 # Initialize emojis
 show_emojis
+
+# Initialize Time Variables
+initialize_time_variables
 
 # Run user input functions in specified order
 run_user_inputs() {

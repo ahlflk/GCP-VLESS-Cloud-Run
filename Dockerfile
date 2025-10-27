@@ -1,22 +1,18 @@
-# Use lightweight Alpine base image
 FROM alpine:latest
 
-# Install dependencies: wget for download, ca-certificates for HTTPS
-RUN apk add --no-cache wget ca-certificates unzip
+RUN apk --no-cache add ca-certificates unzip wget
 
-# Download and install latest Xray-core (64-bit Linux)
-RUN wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip \
-    && unzip Xray-linux-64.zip \
-    && mv xray /usr/local/bin/xray \
-    && chmod +x /usr/local/bin/xray \
-    && rm Xray-linux-64.zip \
-    && mkdir -p /etc/xray
+# Download and install Xray
+RUN wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -O /tmp/xray.zip \
+    && unzip /tmp/xray.zip -d /usr/local/bin/ \
+    && rm /tmp/xray.zip \
+    && chmod +x /usr/local/bin/xray
 
-# Copy the config file (UUID will be replaced by the deployment script)
+# Copy config
 COPY config.json /etc/xray/config.json
 
-# Expose port for Cloud Run (default 8080)
+# Expose port
 EXPOSE 8080
 
-# Run Xray with the config
-CMD ["/usr/local/bin/xray", "run", "-c", "/etc/xray/config.json"]
+# Run Xray
+CMD ["/usr/local/bin/xray", "-config", "/etc/xray/config.json"]
