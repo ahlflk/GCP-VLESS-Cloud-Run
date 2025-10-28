@@ -574,7 +574,7 @@ create_share_link() {
     DOMAIN="${DOMAIN#https://}"
     DOMAIN="${DOMAIN%/}"
     
-    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS"
+    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${END_LOCAL}"
     
     echo "$LINK"
 }
