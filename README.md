@@ -21,51 +21,6 @@ This project allows you to deploy a **VLESS proxy** server over **WebSocket** us
 
 ---
 
-## 🔧 Configuration Overview
-
-### `config.json`
-```json
-{
-  "log": {
-    "loglevel": "warning"
-  },
-  "inbounds": [
-    {
-      "port": 8080,
-      "protocol": "vless",
-      "settings": {
-        "clients": [
-          {
-            "id": "PLACEHOLDER_UUID"
-          }
-        ],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "/vless"
-        }
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls"]
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "freedom",
-      "settings": {}
-    }
-  ]
-}
-````
-
-> 🔐 Replace the UUID with your own for security.
-
----
-
 ## 🐳 Docker Deployment
 
 ### Step 1: Build Docker Image
