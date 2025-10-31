@@ -37,34 +37,18 @@ TELEGRAM_CHANNEL_ID=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_GROUP_ID=""
 
-# Time Variables (will be set in initialize_time_variables)
+# Project ID holder (Will be set during auto_deployment_setup after Yes/No)
+PROJECT_ID=""
+
+# Time Variables (Initialized later)
 START_EPOCH=""
 END_EPOCH=""
 START_LOCAL=""
 END_LOCAL=""
 
-# =================== Time Zone Function ===================
-# Set the time zone globally for the script
-export TZ="Asia/Yangon"
-
-# Helper function to format epoch time to local datetime
-fmt_dt(){ 
-    date -d @"$1" "+%d.%m.%Y %I:%M %p"; 
-}
-
-# Function to calculate and initialize time variables
-initialize_time_variables() {
-    START_EPOCH="$(date +%s)"
-    # Note: 5 hours is only for display/tracking, Cloud Run service is permanent unless deleted
-    END_EPOCH="$(( START_EPOCH + 5*3600 ))" 
-    START_LOCAL="$(fmt_dt "$START_EPOCH")"
-    END_LOCAL="$(fmt_dt "$END_EPOCH")"
-    log "Deployment validity times initialized (Asia/Yangon Time)."
-}
-# ==========================================================
 
 # ------------------------------------------------------------------------------
-# 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION)
+# 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION, TIME)
 # ------------------------------------------------------------------------------
 
 # Emoji Function
@@ -79,7 +63,6 @@ show_emojis() {
     EMOJI_DEPLOY="🚀"
     EMOJI_CHECK="📋"
     EMOJI_CLEAN="🧹"
-    EMOJI_CLOCK="⏱️"
 }
 
 # Beautiful Header/Banner (New Design: Fully enclosed box, adjusted to title width)
@@ -94,13 +77,11 @@ header() {
     local total_width=$((title_length + padding))
     
     # Create top/bottom border line (using Unicode box drawing characters)
-    # The length of the line part inside the corners is total_width - 2
     local top_bottom_fill=$(printf '━%.0s' $(seq 1 $((total_width - 2))))
     local top_bottom="${border_color}┏${top_bottom_fill}┓${NC}"
     local bottom_line="${border_color}┗${top_bottom_fill}┛${NC}"
     
     # Create title line
-    # "┃" + <space> + title + <space> + "┃"
     local title_line="${border_color}┃${NC} ${text_color}${BOLD}${title}${NC} ${border_color}┃${NC}"
     
     echo -e "${top_bottom}"
@@ -130,14 +111,17 @@ selected_info() {
     echo -e "${GREEN}${BOLD}${EMOJI_SELECT} Selected:${NC} ${CYAN}$1${NC}"
 }
 
-# Simple Progress Bar Function with #, ETA, and date/time - Persistent in Light Green
+# ------------------------------------------------------------------------------
+# PROGRESS BAR
+# ------------------------------------------------------------------------------
 progress_bar() {
-    local duration=${1:-3}
-    local width=30
+    local label="${1:-Processing}" 
+    local duration=${2:-3}  
+    local width=30         
     local start=$(date +%s)
     local elapsed=0
     
-    # progress bar
+    # Progress Bar Loop
     while [ $elapsed -lt $duration ]; do
         local percent=$((elapsed * 100 / duration))
         local num_chars=$((percent * width / 100))
@@ -146,15 +130,36 @@ progress_bar() {
         
         local remaining=$((duration - elapsed))
         
-        # progress bar, percentage, and ETA
-        printf "\r[${LIGHT_GREEN}%s${NC}${ORANGE}%s${NC}] %d%% (ETA: %ds)${NC}" "$bar" "$spaces" "$percent" "$remaining"
+        # Display label, progress bar, percentage, and ETA
+        printf "\r${BOLD}${EMOJI_PROC} ${label}... ${NC}[${LIGHT_GREEN}%s${NC}${ORANGE}%s${NC}] %d%% (ETA: %ds)${NC}" "$bar" "$spaces" "$percent" "$remaining"
         
         sleep 0.1
         elapsed=$(( $(date +%s) - start ))
     done
     
     # Final persistent line
-    printf "\r[${LIGHT_GREEN}%s${NC}] 100%% Done! (0s)${NC}\n" "$(printf '#%.0s' $(seq 1 $width))"
+    printf "\r${BOLD}${EMOJI_PROC} ${label}... ${NC}[${LIGHT_GREEN}%s${NC}] 100%% Done! (0s)${NC}\n" "$(printf '#%.0s' $(seq 1 $width))"
+}
+# ------------------------------------------------------------------------------
+
+# === Time Zone Function ===
+# Set the time zone globally for the script
+export TZ="Asia/Yangon"
+
+# Helper function to format epoch time to local datetime
+fmt_dt(){ 
+    # Using 'date' command to format the epoch time in the set TZ (Asia/Yangon)
+    date -d @"$1" "+%d.%m.%Y %I:%M %p"; 
+}
+
+# Function to calculate and initialize time variables
+initialize_time_variables() {
+    START_EPOCH="$(date +%s)"
+    # Note: 5 hours is only for display/tracking, Cloud Run service is permanent unless deleted
+    END_EPOCH="$(( START_EPOCH + 5*3600 ))" 
+    START_LOCAL="$(fmt_dt "$START_EPOCH")"
+    END_LOCAL="$(fmt_dt "$END_EPOCH")"
+    log "Deployment validity times initialized (Asia/Yangon Time)."
 }
 
 # Function to validate UUID format
@@ -170,7 +175,6 @@ validate_uuid() {
 # Function to validate Telegram IDs (combined for Channel/Group/Chat)
 validate_id() {
     if [[ ! $1 =~ ^-?[0-9]+$ ]]; then
-        # Changed 'error' to 'warn' and use return 1 to continue the loop
         warn "Invalid Telegram ID format. Must be a number (e.g., -1001234567890 or 123456789)."
         return 1
     fi
@@ -188,7 +192,7 @@ validate_bot_token() {
 }
 
 # ------------------------------------------------------------------------------
-# 3. USER INPUT FUNCTIONS (IN ORDER) - Simplified for VLESS only
+# 3. USER INPUT FUNCTIONS (IN ORDER)
 # ------------------------------------------------------------------------------
 
 # A. Telegram Destination Selection
@@ -414,7 +418,11 @@ select_uuid() {
             if command -v uuidgen &> /dev/null; then
                 UUID=$(uuidgen)
             else
-                UUID=$(cat /proc/sys/kernel/random/uuid)
+                # Fallback for systems without uuidgen
+                UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "3675119c-14fc-46a4-b5f3-9a2c91a7d802")
+                if [[ "$UUID" == "3675119c-14fc-46a4-b5f3-9a2c91a7d802" ]]; then
+                     warn "uuidgen not found and /proc/sys/kernel/random/uuid is inaccessible. Using default UUID."
+                fi
             fi
             log "Generated New UUID: $UUID"
             break
@@ -432,36 +440,46 @@ select_uuid() {
     echo
 }
 
+
 # H. Summary and Confirmation
 show_config_summary() {
+    # Get current configured project ID for display
+    local temp_project_id=$(gcloud config get-value project 2>/dev/null || echo "Not Configured (Deployment will fail)")
+    
     header "${EMOJI_CHECK} Configuration Summary"
-    # Project ID moved to top
-    echo -e "${CYAN}${BOLD}Project ID:${NC}    $(gcloud config get-value project)"
-    echo -e "${CYAN}${BOLD}Protocol:${NC}      $PROTOCOL"
-    echo -e "${CYAN}${BOLD}Region:${NC}        $REGION"
-    echo -e "${CYAN}${BOLD}Service Name:${NC}  $SERVICE_NAME"
-    echo -e "${CYAN}${BOLD}Host Domain:${NC}   $HOST_DOMAIN"
-    echo -e "${CYAN}${BOLD}UUID:${NC}          $UUID"
-    echo -e "${CYAN}${BOLD}Path:${NC}          $VLESS_PATH"
-    echo -e "${CYAN}${BOLD}CPU/Memory:${NC}    $CPU core(s) / $MEMORY"
+    
+    # Using printf for alignment
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Project ID:"             "$temp_project_id"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Protocol:"               "$PROTOCOL"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Region:"                 "$REGION"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Service Name:"           "$SERVICE_NAME"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Host Domain:"            "$HOST_DOMAIN"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "UUID:"                   "$UUID"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Path:"                   "$VLESS_PATH"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "CPU/Memory:"             "$CPU core(s) / $MEMORY"
     
     if [[ "$TELEGRAM_DESTINATION" != "none" ]]; then
-        echo -e "${CYAN}${BOLD}Telegram:${NC}      $TELEGRAM_DESTINATION (Token: ${TELEGRAM_BOT_TOKEN:0:8}...)"
+        printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Telegram:" "$TELEGRAM_DESTINATION (Token: ${TELEGRAM_BOT_TOKEN:0:8}...)"
     else
-        echo -e "${CYAN}${BOLD}Telegram:${NC}      Not configured"
+        printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Telegram:" "Not configured"
     fi
-    
-    # Time Zone Summary Added
-    header "${EMOJI_CLOCK} Validity Period (Asia/Yangon)"
-    echo -e "${CYAN}${BOLD}Start Time:${NC}    $START_LOCAL"
-    echo -e "${CYAN}${BOLD}End Time (5hrs):${NC} $END_LOCAL"
     echo
+
+    # --- Timeframe Summary ---
+    header "⏳ Deployment Timeframe (Asia/Yangon)"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Deployment Start:"       "$START_LOCAL"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Estimated End Time:"     "$END_LOCAL (5 hours)"
+    echo
+    # -------------------------
     
     while true; do
-        # FIX: Using echo -e and subshell for the prompt to correctly handle color codes
         read -p "$(echo -e "${ORANGE}${BOLD}Proceed with deployment? (y/n): ${NC}")" confirm
         case $confirm in
-            [Yy]* ) break;;
+            [Yy]* ) 
+                # After confirmation, start the auto-setup immediately
+                auto_deployment_setup
+                break
+                ;;
             [Nn]* ) 
                 info "Deployment cancelled by user"
                 exit 0
@@ -472,14 +490,44 @@ show_config_summary() {
 }
 
 # ------------------------------------------------------------------------------
-# 4. CORE DEPLOYMENT FUNCTIONS
+# MODIFIED: AUTO DEPLOYMENT SETUP (Project ID CLI & API Enablement) - FULLY AUTOMATIC
+# ------------------------------------------------------------------------------
+auto_deployment_setup() {
+    log "Starting initial GCP setup..."
+    
+    # 1. Check and Set Project ID CLI Configuration
+    info "Fetching Project ID for CLI configuration." 
+    PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
+    
+    if [[ -z "$PROJECT_ID" ]]; then
+        error "GCP Project ID is not configured in gcloud CLI. Please run 'gcloud config set project [PROJECT_ID]' and try again."
+    fi
+    
+    selected_info "Using configured Project ID: $PROJECT_ID"
+
+    # Set Project ID CLI Configuration (redundant but ensures the current context)
+    log "Verifying gcloud CLI active project to: ${PROJECT_ID}"
+    gcloud config set project "$PROJECT_ID" --quiet > /dev/null 2>&1
+    progress_bar "Setting Project ID CLI" 3 # Time: 3s
+
+    # 2. Enable Required APIs
+    log "Enabling required APIs (Cloud Run, Container Registry, Cloud Build)..."
+    gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com --project "$PROJECT_ID" --quiet > /dev/null 2>&1
+    progress_bar "Enabling APIs" 3 # Time: 3s (Increased for accuracy)
+
+    log "Initial GCP setup complete. Proceeding with deployment..."
+    progress_bar "GCP Setup" 3 # Time: 3s
+}
+
+# ------------------------------------------------------------------------------
+# 4. CORE DEPLOYMENT FUNCTIONS 
 # ------------------------------------------------------------------------------
 
 # Clone Repo and Extract Files
 clone_and_extract() {
     log "Cloning repository from https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git..."
     git clone https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git temp-repo > /dev/null 2>&1
-    progress_bar 2
+    progress_bar "Cloning Repository" 5 # Time: 5s (Adjusted)
 
     if [ ! -d "temp-repo" ]; then
         error "Failed to clone repository. Check your network or permissions."
@@ -498,7 +546,6 @@ clone_and_extract() {
     cp config.json ../config.json > /dev/null 2>&1
     cd ..
     rm -rf temp-repo > /dev/null 2>&1
-    log "Repository cloned and files extracted successfully."
 }
 
 # Config File Preparation
@@ -509,7 +556,7 @@ prepare_config_files() {
     fi
     sed -i "s/PLACEHOLDER_UUID/$UUID/g" config.json
     sed -i "s|/vless|$VLESS_PATH|g" config.json
-    progress_bar 1
+    progress_bar "Preparing Config" 10 # Time: 10s
 }
 
 # Share Link Creation (VLESS-WS only)
@@ -574,20 +621,14 @@ send_deployment_notification() {
 
 # Deploy to Cloud Run
 deploy_to_cloud_run() {
-    local project_id=$(gcloud config get-value project 2>/dev/null || echo "")
-    if [[ -z "$project_id" ]]; then
-        error "Project ID not set. Please run 'gcloud config set project YOUR_PROJECT_ID' first."
-    fi
-
-    info "Enabling required APIs..."
-    gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com --quiet > /dev/null 2>&1
-    progress_bar 2
+    local project_id="$PROJECT_ID"
+    # Project ID is now guaranteed to be set by auto_deployment_setup()
 
     log "Building and pushing Docker image..."
     gcloud builds submit --tag gcr.io/$project_id/$SERVICE_NAME:v1 . --quiet > /dev/null 2>&1
-    progress_bar 10  # Longer for build
+    progress_bar "Building Docker Image" 15 # Time: 15s (Increased for accuracy)
 
-    log "Deploying to Cloud Run..."
+    log "Deploying to Cloud Run service..."
     gcloud run deploy $SERVICE_NAME \
       --image gcr.io/$project_id/$SERVICE_NAME:v1 \
       --platform managed \
@@ -597,11 +638,11 @@ deploy_to_cloud_run() {
       --memory $MEMORY \
       --cpu $CPU \
       --quiet > /dev/null 2>&1
-    progress_bar 5
+    progress_bar "Deploying Service" 20 # Time: 20s (Increased for accuracy)
 
     local service_url=$(gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)' --quiet 2>/dev/null)
     if [[ -z "$service_url" ]]; then
-        error "Failed to retrieve service URL."
+        error "Failed to retrieve service URL after deployment."
     fi
 
     local share_link=$(create_share_link "$SERVICE_NAME" "$service_url" "$UUID")
@@ -610,15 +651,14 @@ deploy_to_cloud_run() {
     selected_info "Service URL: $service_url"
     selected_info "VLESS Share Link: $share_link"
 
-    # Telegram message updated to include Start/End Times
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n\n⏱️ *Validity (Asia/Yangon)*:\n• Start: $START_LOCAL\n• End (5hrs): $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
+    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n• Start Time: $START_LOCAL\n• End Time: $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
     
     send_deployment_notification "$telegram_message"
 }
 
-# Create Folder with deployment-info.txt (Replaced ZIP Function)
+# Create Folder with deployment-info.txt
 create_project_folder() {
-    local project_id=$(gcloud config get-value project 2>/dev/null || echo "")
+    local project_id="$PROJECT_ID"
     local service_url=$(gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)' --quiet 2>/dev/null)
     local share_link=$(create_share_link "$SERVICE_NAME" "$service_url" "$UUID")
 
@@ -628,7 +668,6 @@ create_project_folder() {
     mv Dockerfile GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
     mv config.json GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
     
-    # EOF is now correctly placed at the beginning of the line
     cat > GCP-VLESS-Cloud-Run/deployment-info.txt << EOF
 GCP VLESS Cloud Run Deployment Info
 ===================================
@@ -644,11 +683,8 @@ Memory: $MEMORY
 Service URL: $service_url
 VLESS Share Link: $share_link
 
-[Validity Period (Asia/Yangon)]
-Deployment Start: $START_LOCAL
-Expected End (5hrs): $END_LOCAL
-
-Deployment Date: $(date)
+Deployment Date (Asia/Yangon): $START_LOCAL
+Estimated End Time (Asia/Yangon): $END_LOCAL (5 hours)
 Protocol: $PROTOCOL
 
 For more details, check GCP Console: https://console.cloud.google.com/run?project=$project_id
@@ -665,7 +701,7 @@ EOF
 # Initialize emojis
 show_emojis
 
-# Initialize Time Variables
+# Initialize Time Variables BEFORE asking for inputs
 initialize_time_variables
 
 # Run user input functions in specified order
@@ -679,14 +715,18 @@ run_user_inputs() {
     select_service_name
     select_host_domain
     select_uuid
-    show_config_summary
+    # show_config_summary will call auto_deployment_setup() upon 'Yes'
+    show_config_summary 
 }
 
 # Main execution
 run_user_inputs
+
+# Core Deployment Steps run automatically after auto_deployment_setup completes
 clone_and_extract
 prepare_config_files
 deploy_to_cloud_run
-create_project_folder # Replaced create_project_zip with the new function
+create_project_folder 
 
 info "All done! Check your GCP Console for the deployed service."
+
