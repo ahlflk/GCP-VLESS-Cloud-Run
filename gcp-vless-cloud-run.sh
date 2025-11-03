@@ -632,20 +632,20 @@ create_project_folder() {
 GCP VLESS Cloud Run Deployment Info
 ================================
 Project ID: $project_id
+Protocol: $PROTOCOL
 Region: $REGION
-Service Name: $SERVICE_NAME
-UUID: $UUID
-Path: $VLESS_PATH
-Host Domain: $HOST_DOMAIN
 CPU: $CPU
 Memory: $MEMORY
+Service Name: $SERVICE_NAME
+Host Domain: $HOST_DOMAIN
+UUID: $UUID
+Path: $VLESS_PATH
 ================================
 Service URL: $service_url
 ================================
 VLESS Share Link: $share_link
 ================================
 Deployment Date: $(date)
-Protocol: $PROTOCOL
 ================================
 For more details, check GCP Console: https://console.cloud.google.com/run?project=$project_id
 ================================
