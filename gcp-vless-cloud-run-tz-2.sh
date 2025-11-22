@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GCP Cloud Run VLESS Deployment
+# GCP Cloud Run VLESS Deployment 🚀
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ set -euo pipefail
 # Colors
 RED='\033[0;31m'
 GREEN='\033[1;32m'
-LIGHT_GREEN='\033[1;92m'  # Light Green for bar
+LIGHT_GREEN='\033[1;92m'
 YELLOW='\033[1;33m'
 ORANGE='\033[0;33m' # Header Color
 BLUE='\033[1;34m'
@@ -40,6 +40,12 @@ TELEGRAM_GROUP_ID=""
 # Project ID holder (Will be set during auto_deployment_setup after Yes/No)
 PROJECT_ID=""
 
+# Time Variables (for validity tracking)
+START_EPOCH=""
+END_EPOCH=""
+START_LOCAL=""
+END_LOCAL=""
+
 # ------------------------------------------------------------------------------
 # 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION)
 # ------------------------------------------------------------------------------
@@ -52,10 +58,24 @@ show_emojis() {
     EMOJI_ERROR="❌"
     EMOJI_INFO="💡"
     EMOJI_SELECT="🎯"
-    EMOJI_PROC="⚙️"
     EMOJI_DEPLOY="🚀"
-    EMOJI_CHECK="📋"
     EMOJI_CLEAN="🧹"
+    EMOJI_SPINNER="⏳"  # For spinner
+    EMOJI_FOLDER="📁"
+    EMOJI_LINK="🔗"
+    EMOJI_START="⏰"
+    EMOJI_END="⌛"
+}
+
+# Time Zone Function
+export TZ="Asia/Yangon"
+fmt_dt(){ date -d @"$1" "+%d.%m.%Y %I:%M %p"; }
+
+initialize_time_variables() {
+    START_EPOCH="$(date +%s)"
+    END_EPOCH="$(( START_EPOCH + 5*3600 ))" # 5 hours validity
+    START_LOCAL="$(fmt_dt "$START_EPOCH")"
+    END_LOCAL="$(fmt_dt "$END_EPOCH")"
 }
 
 # Beautiful Header/Banner (New Design: Fully enclosed box, adjusted to title width)
@@ -105,40 +125,38 @@ selected_info() {
 }
 
 # ------------------------------------------------------------------------------
-# PROGRESS BAR
+# SPINNER (Replaced Progress Bar - Fixed for smoothness)
 # ------------------------------------------------------------------------------
-progress_bar() {
-    local label="${1:-Processing}" 
-    local duration=${2:-3}  
-    local width=30         
-    local start=$(date +%s)
-    local elapsed=0
-    
-    # Progress Bar Loop
-    while [ $elapsed -lt $duration ]; do
-        local percent=$((elapsed * 100 / duration))
-        local num_chars=$((percent * width / 100))
-        local bar=$(printf '#%.0s' $(seq 1 $num_chars))
-        local spaces=$(printf ' %.0s' $(seq 1 $((width - num_chars))))
-        
-        local remaining=$((duration - elapsed))
-        
-        # Display label, progress bar, percentage, and ETA
-        printf "\r${BOLD}${EMOJI_PROC} ${label}... ${NC}[${LIGHT_GREEN}%s${NC}${ORANGE}%s${NC}] %d%% (ETA: %ds)${NC}" "$bar" "$spaces" "$percent" "$remaining"
-        
+spinner() {
+    local label="$1"
+    shift
+    local command="$*"
+    local spinstr='|/-\'
+    local i=0
+
+    # Run command in background
+    eval "$command" &
+    local pid=$!
+
+    # Spinner loop until command finishes
+    while kill -0 $pid 2>/dev/null; do
+        i=$(((i + 1) % 4))
+        printf "\r${BOLD}${EMOJI_SPINNER} ${label}... ${NC}${YELLOW}[${spinstr:$i:1}]${NC}"
         sleep 0.1
-        elapsed=$(( $(date +%s) - start ))
     done
-    
-    # Final persistent line
-    printf "\r${BOLD}${EMOJI_PROC} ${label}... ${NC}[${LIGHT_GREEN}%s${NC}] 100%% Done! (0s)${NC}\n" "$(printf '#%.0s' $(seq 1 $width))"
+
+    # Wait for command to complete
+    wait $pid
+
+    # Clear the line and show done message smoothly
+    printf "\r${BOLD}${EMOJI_SPINNER} ${label}... ${NC}${GREEN}${EMOJI_SUCCESS} Done!${NC}\n"
 }
 
-# Function to validate UUID format
-validate_uuid() {
-    local uuid_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    if [[ ! $1 =~ $uuid_pattern ]]; then
-        warn "Invalid UUID format. Please ensure it is a valid 32-digit hexadecimal number with 4 hyphens."
+# Function to validate Telegram Bot Token
+validate_bot_token() {
+    local token_pattern='^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$'
+    if [[ ! $1 =~ $token_pattern ]]; then
+        warn "Invalid Telegram Bot Token format. Please try again. 🤖"
         return 1
     fi
     return 0
@@ -147,17 +165,17 @@ validate_uuid() {
 # Function to validate Telegram IDs (combined for Channel/Group/Chat)
 validate_id() {
     if [[ ! $1 =~ ^-?[0-9]+$ ]]; then
-        warn "Invalid Telegram ID format. Must be a number (e.g., -1001234567890 or 123456789)."
+        warn "Invalid Telegram ID format. Must be a number (e.g., -1001234567890 or 123456789). 📱"
         return 1
     fi
     return 0
 }
 
-# Function to validate Telegram Bot Token
-validate_bot_token() {
-    local token_pattern='^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$'
-    if [[ ! $1 =~ $token_pattern ]]; then
-        warn "Invalid Telegram Bot Token format. Please try again."
+# Function to validate UUID format
+validate_uuid() {
+    local uuid_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    if [[ ! $1 =~ $uuid_pattern ]]; then
+        warn "Invalid UUID format. Please ensure it is a valid 32-digit hexadecimal number with 4 hyphens. 🔑"
         return 1
     fi
     return 0
@@ -193,38 +211,49 @@ select_telegram_destination() {
         esac
     done
 
+    selected_info "Telegram Destination: $TELEGRAM_DESTINATION"
+
     if [[ "$TELEGRAM_DESTINATION" != "none" ]]; then
-        echo
+    echo ""
+        header "🤖 Bot Token Configuration"
         while true; do
             read -p "Enter Telegram Bot Token: " TELEGRAM_BOT_TOKEN
             if validate_bot_token "$TELEGRAM_BOT_TOKEN"; then break; else continue; fi
         done
+        selected_info "Bot Token: ${TELEGRAM_BOT_TOKEN:0:8}..."
         
         if [[ "$TELEGRAM_DESTINATION" == "channel" || "$TELEGRAM_DESTINATION" == "both" ]]; then
+        echo ""
+            header "📢 Channel ID Configuration"
             while true; do
                 read -p "Enter Telegram Channel ID: " TELEGRAM_CHANNEL_ID
                 if validate_id "$TELEGRAM_CHANNEL_ID"; then break; fi
             done
+            selected_info "Channel ID: $TELEGRAM_CHANNEL_ID"
         fi
         
         if [[ "$TELEGRAM_DESTINATION" == "bot" || "$TELEGRAM_DESTINATION" == "both" ]]; then
+        echo ""
+            header "💬 Chat ID Configuration"
             while true; do
                 read -p "Enter your Chat ID (for bot private message): " TELEGRAM_CHAT_ID
                 if validate_id "$TELEGRAM_CHAT_ID"; then break; fi
             done
+            selected_info "Chat ID: $TELEGRAM_CHAT_ID"
         fi
         
         if [[ "$TELEGRAM_DESTINATION" == "group" ]]; then
+        echo ""
+            header "👥 Group ID Configuration"
             while true; do
                 read -p "Enter Telegram Group ID: " TELEGRAM_GROUP_ID
                 if validate_id "$TELEGRAM_GROUP_ID"; then break; fi
             done
+            selected_info "Group ID: $TELEGRAM_GROUP_ID"
         fi
-        selected_info "Bot Token: ${TELEGRAM_BOT_TOKEN:0:8}..."
     fi
     
-    selected_info "Telegram Destination: $TELEGRAM_DESTINATION"
-    echo
+    echo ""
 }
 
 # B. Region Selection
@@ -266,7 +295,7 @@ select_region() {
     done
     
     selected_info "Region: $REGION"
-    echo
+    echo ""
 }
 
 # C. CPU Configuration
@@ -294,13 +323,12 @@ select_cpu() {
     done
     
     selected_info "CPU: $CPU core(s)"
-    echo
+    echo ""
 }
 
 # D. Memory Configuration
 select_memory() {
-    header "💾 Memory Configuration"
-    
+    header "💾 Memory Configuration"    
     echo -e "${CYAN}Available Options:${NC}"
     echo -e "${BOLD}1.${NC} 512Mi (Minimum requirement)"
     echo -e "${BOLD}2.${NC} 1Gi (Basic usage)"
@@ -327,12 +355,12 @@ select_memory() {
     done
     
     selected_info "Memory: $MEMORY"
-    echo
+    echo ""
 }
 
 # E. Service Name Configuration
 select_service_name() {
-    header "${EMOJI_PROC} Service Name Configuration"
+    header "⚙️ Service Name Configuration"
     
     echo -e "${CYAN}Deployment Service Name (Default: gcp-ahlflk):${NC}"
     
@@ -345,7 +373,7 @@ select_service_name() {
     fi
     
     selected_info "Service Name: $SERVICE_NAME"
-    echo
+    echo ""
 }
 
 # F. Host Domain Configuration
@@ -363,7 +391,7 @@ select_host_domain() {
     fi
     
     selected_info "Host Domain: $HOST_DOMAIN"
-    echo
+    echo ""
 }
 
 # G. UUID Configuration (VLESS only)
@@ -384,7 +412,7 @@ select_uuid() {
 
         if [[ "$uuid_input" == "1" ]]; then
             UUID="$default_uuid"
-            log "Using Default UUID: $UUID"
+            log "Using Default UUID: $UUID ✅"
             break
         elif [[ "$uuid_input" == "2" ]]; then
             if command -v uuidgen &> /dev/null; then
@@ -393,15 +421,15 @@ select_uuid() {
                 # Fallback for systems without uuidgen
                 UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "3675119c-14fc-46a4-b5f3-9a2c91a7d802")
                 if [[ "$UUID" == "3675119c-14fc-46a4-b5f3-9a2c91a7d802" ]]; then
-                     warn "uuidgen not found and /proc/sys/kernel/random/uuid is inaccessible. Using default UUID: $UUID"
+                     warn "uuidgen not found and /proc/sys/kernel/random/uuid is inaccessible. Using default UUID: $UUID 🔄"
                 fi
             fi
-            log "Generated New UUID: $UUID"
+            log "Generated New UUID: $UUID ✨"
             break
         elif validate_uuid "$uuid_input"; then
             # Custom UUID validation successful
             UUID="$uuid_input"
-            log "Using Custom UUID: $UUID"
+            log "Using Custom UUID: $UUID ✅"
             break
         else
             echo -e "${RED}Invalid input. Please enter 1, 2, or a valid custom UUID.${NC}" 
@@ -409,7 +437,7 @@ select_uuid() {
     done
     
     selected_info "UUID: $UUID"
-    echo
+    echo ""
 }
 
 
@@ -418,7 +446,7 @@ show_config_summary() {
     # Get current configured project ID for display
     local temp_project_id=$(gcloud config get-value project 2>/dev/null || echo "Not Configured (Deployment will fail)")
     
-    header "${EMOJI_CHECK} Configuration Summary"
+    header "📋 Configuration Summary"    
     
     # Using printf for alignment
     printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Project ID:"             "$temp_project_id"
@@ -437,6 +465,12 @@ show_config_summary() {
     fi
     echo
     
+    # --- TimeFrame Summary ---
+    header "⏳ Deployment TimeFrame (Asia/Yangon)"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Start Time:"       "$START_LOCAL"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "End Time:"     "$END_LOCAL (5 hours)"
+    echo
+    
     while true; do
         read -p "$(echo -e "${ORANGE}${BOLD}Proceed with deployment? (y/n): ${NC}")" confirm
         case $confirm in
@@ -446,7 +480,7 @@ show_config_summary() {
                 break
                 ;;
             [Nn]* ) 
-                info "Deployment cancelled by user"
+                info "Deployment cancelled by user. 👋"
                 exit 0
                 ;;
             * ) echo -e "${RED}Please answer yes (y) or no (n).${NC}";;
@@ -458,30 +492,28 @@ show_config_summary() {
 # MODIFIED: AUTO DEPLOYMENT SETUP (Project ID CLI & API Enablement) - FULLY AUTOMATIC
 # ------------------------------------------------------------------------------
 auto_deployment_setup() {
-    log "Starting initial GCP setup..."
+    log "Starting initial GCP setup... 🛠️"
     
     # 1. Check and Set Project ID CLI Configuration
-    info "Fetching Project ID for CLI configuration." # Added back the INFO log
+    info "Fetching Project ID for CLI configuration. 🔍"
     PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
     
     if [[ -z "$PROJECT_ID" ]]; then
-        error "GCP Project ID is not configured in gcloud CLI. Please run 'gcloud config set project [PROJECT_ID]' and try again."
+        error "GCP Project ID is not configured in gcloud CLI. Please run 'gcloud config set project [PROJECT_ID]' and try again. ⚠️"
     fi
     
     selected_info "Using configured Project ID: $PROJECT_ID"
 
     # Set Project ID CLI Configuration (redundant but ensures the current context)
-    log "Verifying gcloud CLI active project to: ${PROJECT_ID}"
-    gcloud config set project "$PROJECT_ID" --quiet > /dev/null 2>&1
-    progress_bar "Setting Project ID CLI" 1 # Time: 1s
+    log "Verifying gcloud CLI active project to: ${PROJECT_ID} 📝"
+    spinner "Setting Project ID CLI" "gcloud config set project \"$PROJECT_ID\" --quiet > /dev/null 2>&1"
 
     # 2. Enable Required APIs
-    log "Enabling required APIs (Cloud Run, Container Registry, Cloud Build)..."
-    gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com --project "$PROJECT_ID" --quiet > /dev/null 2>&1
-    progress_bar "Enabling APIs" 1 # Time: 1s (Increased for accuracy)
+    log "Enabling required APIs (Cloud Run, Container Registry, Cloud Build)... 🔓"
+    spinner "Enabling APIs" "gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com --project \"$PROJECT_ID\" --quiet > /dev/null 2>&1"
 
-    log "Initial GCP setup complete. Proceeding with deployment..."
-    progress_bar "GCP Setup" 1 # Time: 1s
+    log "Initial GCP setup complete. Proceeding with deployment... 🎉"
+    spinner "GCP Setup" "sleep 0.5"  # Short placeholder for setup confirmation
 }
 
 # ------------------------------------------------------------------------------
@@ -490,21 +522,20 @@ auto_deployment_setup() {
 
 # Clone Repo and Extract Files
 clone_and_extract() {
-    log "Cloning repository from https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git..."
-    git clone https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git temp-repo > /dev/null 2>&1
-    progress_bar "Cloning Repository" 5 # Time: 5s (Adjusted)
+    log "Cloning repository from https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git... 📥"
+    spinner "Cloning Repository" "git clone https://github.com/ahlflk/GCP-VLESS-Cloud-Run.git temp-repo > /dev/null 2>&1"
 
     if [ ! -d "temp-repo" ]; then
-        error "Failed to clone repository. Check your network or permissions."
+        error "Failed to clone repository. Check your network or permissions. 🌐"
     fi
     
     cd temp-repo
 
     if [ ! -f "Dockerfile" ]; then
-        error "Dockerfile not found in repo."
+        error "Dockerfile not found in repo. 🐳"
     fi
     if [ ! -f "config.json" ]; then
-        error "config.json not found in repo."
+        error "config.json not found in repo. ⚙️"
     fi
 
     cp Dockerfile ../Dockerfile > /dev/null 2>&1
@@ -515,16 +546,14 @@ clone_and_extract() {
 
 # Config File Preparation
 prepare_config_files() {
-    log "Preparing Xray config file for $PROTOCOL..."
+    log "Preparing Xray config file for $PROTOCOL... 📄"
     if [[ ! -f "config.json" ]]; then
-        error "config.json not found."
+        error "config.json not found. ❌"
     fi
-    sed -i "s/PLACEHOLDER_UUID/$UUID/g" config.json
-    sed -i "s|/vless|$VLESS_PATH|g" config.json
-    progress_bar "Preparing Config" 10 # Time: 10s
+    spinner "Preparing Config" "sed -i \"s/PLACEHOLDER_UUID/$UUID/g\" config.json && sed -i \"s|/vless|$VLESS_PATH|g\" config.json"
 }
 
-# Share Link Creation (VLESS-WS only)
+# Share Link Creation (VLESS-WS only) - Modified to include time
 create_share_link() {
     local SERVICE_NAME="$1"
     local DOMAIN="$2"
@@ -537,7 +566,10 @@ create_share_link() {
     DOMAIN="${DOMAIN#https://}"
     DOMAIN="${DOMAIN%/}"
     
-    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS"
+    # Include time in the link title
+    local time_suffix="${START_LOCAL// /_}_${END_LOCAL// /_}"
+    time_suffix="${time_suffix//:/-}"  # Replace : with - for URL safety
+    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${time_suffix}"
     
     echo "$LINK"
 }
@@ -563,23 +595,23 @@ send_deployment_notification() {
     case $TELEGRAM_DESTINATION in
         "channel")
             send_to_telegram "$TELEGRAM_CHANNEL_ID" "$message" > /dev/null 2>&1
-            log "Notification sent to Telegram Channel."
+            log "Notification sent to Telegram Channel. 📢"
             ;;
         "bot")
             send_to_telegram "$TELEGRAM_CHAT_ID" "$message" > /dev/null 2>&1
-            log "Notification sent to Bot private message."
+            log "Notification sent to Bot private message. 💬"
             ;;
         "group")
             send_to_telegram "$TELEGRAM_GROUP_ID" "$message" > /dev/null 2>&1
-            log "Notification sent to Telegram Group."
+            log "Notification sent to Telegram Group. 👥"
             ;;
         "both")
             send_to_telegram "$TELEGRAM_CHANNEL_ID" "$message" > /dev/null 2>&1
             send_to_telegram "$TELEGRAM_CHAT_ID" "$message" > /dev/null 2>&1
-            log "Notification sent to both Channel and Bot."
+            log "Notification sent to both Channel and Bot. 📱"
             ;;
         "none")
-            log "Skipping Telegram notification."
+            log "Skipping Telegram notification. ⏭️"
             ;;
     esac
 }
@@ -589,34 +621,24 @@ deploy_to_cloud_run() {
     local project_id="$PROJECT_ID"
     # Project ID is now guaranteed to be set by auto_deployment_setup()
 
-    log "Building and pushing Docker image..."
-    gcloud builds submit --tag gcr.io/$project_id/$SERVICE_NAME:v1 . --quiet > /dev/null 2>&1
-    progress_bar "Building Docker Image" 15 # Time: 15s (Increased for accuracy)
+    log "Building and pushing Docker image... 🐳"
+    spinner "Building Docker Image" "gcloud builds submit --tag gcr.io/$project_id/$SERVICE_NAME:v1 . --quiet > /dev/null 2>&1"
 
-    log "Deploying to Cloud Run service..."
-    gcloud run deploy $SERVICE_NAME \
-      --image gcr.io/$project_id/$SERVICE_NAME:v1 \
-      --platform managed \
-      --region $REGION \
-      --allow-unauthenticated \
-      --port 8080 \
-      --memory $MEMORY \
-      --cpu $CPU \
-      --quiet > /dev/null 2>&1
-    progress_bar "Deploying Service" 20 # Time: 20s (Increased for accuracy)
+    log "Deploying to Cloud Run service... ☁️"
+    spinner "Deploying Service" "gcloud run deploy $SERVICE_NAME --image gcr.io/$project_id/$SERVICE_NAME:v1 --platform managed --region $REGION --allow-unauthenticated --port 8080 --memory $MEMORY --cpu $CPU --quiet > /dev/null 2>&1"
 
     local service_url=$(gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)' --quiet 2>/dev/null)
     if [[ -z "$service_url" ]]; then
-        error "Failed to retrieve service URL after deployment."
+        error "Failed to retrieve service URL after deployment. 🌐"
     fi
 
     local share_link=$(create_share_link "$SERVICE_NAME" "$service_url" "$UUID")
 
-    log "Deployment completed!"
+    log "Deployment completed! 🎉"
     selected_info "Service URL: $service_url"
     selected_info "VLESS Share Link: $share_link"
 
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n\n🔗 [VLESS Link]($share_link)"
+    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• 🌐 Protocol: $PROTOCOL\n• 🗺️ Region: $REGION\n• ${EMOJI_START} Start: $START_LOCAL\n• ${EMOJI_END} End: $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
     
     send_deployment_notification "$telegram_message"
 }
@@ -627,7 +649,7 @@ create_project_folder() {
     local service_url=$(gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)' --quiet 2>/dev/null)
     local share_link=$(create_share_link "$SERVICE_NAME" "$service_url" "$UUID")
 
-    log "Saving project files and info to folder: GCP-VLESS-Cloud-Run/"
+    log "Saving project files and info to folder: GCP-VLESS-Cloud-Run/ 📁"
     mkdir -p GCP-VLESS-Cloud-Run
     # Move/Copy the generated files into the new folder
     mv Dockerfile GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
@@ -642,23 +664,18 @@ Protocol: $PROTOCOL
 Region: $REGION
 CPU: $CPU
 Memory: $MEMORY
-Service Name: $SERVICE_NAME
-Host Domain: $HOST_DOMAIN
-UUID: $UUID
-Path: $VLESS_PATH
 ================================
-Service URL: $service_url
+${EMOJI_START} Start Time: $START_LOCAL
+${EMOJI_END} End Time: $END_LOCAL
 ================================
 VLESS Share Link: $share_link
 ================================
 Deployment Date: $(date)
 ================================
-For more details, check GCP Console: https://console.cloud.google.com/run?project=$project_id
-================================
 EOF
     
-    log "Project files and info saved successfully in: GCP-VLESS-Cloud-Run/"
-    info "Check the 'GCP-VLESS-Cloud-Run' folder for your deployment files and details."
+    log "Project files and info saved successfully in: GCP-VLESS-Cloud-Run/ ${EMOJI_FOLDER}"
+    info "Check the 'GCP-VLESS-Cloud-Run' folder for your deployment files and details. 📂"
 }
 
 # ------------------------------------------------------------------------------
@@ -672,6 +689,7 @@ show_emojis
 run_user_inputs() {
     # Display main header
     header "${EMOJI_DEPLOY} GCP Cloud Run VLESS Deployment"
+    initialize_time_variables # FIX: Initialize time variables first
     select_telegram_destination
     select_region
     select_cpu
@@ -692,4 +710,5 @@ prepare_config_files
 deploy_to_cloud_run
 create_project_folder 
 
-info "All done! Check your GCP Console for the deployed service."
+info "All done! Check your GCP Console for the deployed service. 🎉"
+

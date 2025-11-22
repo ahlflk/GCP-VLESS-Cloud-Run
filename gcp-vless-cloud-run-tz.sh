@@ -28,7 +28,7 @@ CPU="2"
 MEMORY="2Gi"
 SERVICE_NAME="gcp-ahlflk"
 HOST_DOMAIN="m.googleapis.com"
-VLESS_PATH="/t.me/AHLFLK2025channel"
+VLESS_PATH="/https://t.me/AHLFLK2025channel"
 
 # Telegram Variables (will be set during selection)
 TELEGRAM_DESTINATION="none"
@@ -40,8 +40,15 @@ TELEGRAM_GROUP_ID=""
 # Project ID holder (Will be set during auto_deployment_setup after Yes/No)
 PROJECT_ID=""
 
+# Time Variables (Initialized later)
+START_EPOCH=""
+END_EPOCH=""
+START_LOCAL=""
+END_LOCAL=""
+
+
 # ------------------------------------------------------------------------------
-# 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION)
+# 2. UTILITY FUNCTIONS (LOGGING, UI, VALIDATION, TIME)
 # ------------------------------------------------------------------------------
 
 # Emoji Function
@@ -132,6 +139,17 @@ progress_bar() {
     
     # Final persistent line
     printf "\r${BOLD}${EMOJI_PROC} ${label}... ${NC}[${LIGHT_GREEN}%s${NC}] 100%% Done! (0s)${NC}\n" "$(printf '#%.0s' $(seq 1 $width))"
+}
+
+# Time Zone Function
+export TZ="Asia/Yangon"
+fmt_dt(){ date -d @"$1" "+%d.%m.%Y %I:%M %p"; }
+
+initialize_time_variables() {
+    START_EPOCH="$(date +%s)"
+    END_EPOCH="$(( START_EPOCH + 5*3600 ))" # 5 hours validity
+    START_LOCAL="$(fmt_dt "$START_EPOCH")"
+    END_LOCAL="$(fmt_dt "$END_EPOCH")"
 }
 
 # Function to validate UUID format
@@ -436,6 +454,12 @@ show_config_summary() {
         printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Telegram:" "Not configured"
     fi
     echo
+
+    # --- TimeFrame Summary ---
+    header "⏳ Deployment TimeFrame (Asia/Yangon)"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Deployment Start:"       "$START_LOCAL"
+    printf "${CYAN}${BOLD}%-20s${NC} %s\n" "Estimated End Time:"     "$END_LOCAL (5 hours)"
+    echo
     
     while true; do
         read -p "$(echo -e "${ORANGE}${BOLD}Proceed with deployment? (y/n): ${NC}")" confirm
@@ -461,7 +485,7 @@ auto_deployment_setup() {
     log "Starting initial GCP setup..."
     
     # 1. Check and Set Project ID CLI Configuration
-    info "Fetching Project ID for CLI configuration." # Added back the INFO log
+    info "Fetching Project ID for CLI configuration." 
     PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
     
     if [[ -z "$PROJECT_ID" ]]; then
@@ -473,15 +497,15 @@ auto_deployment_setup() {
     # Set Project ID CLI Configuration (redundant but ensures the current context)
     log "Verifying gcloud CLI active project to: ${PROJECT_ID}"
     gcloud config set project "$PROJECT_ID" --quiet > /dev/null 2>&1
-    progress_bar "Setting Project ID CLI" 1 # Time: 1s
+    progress_bar "Setting Project ID CLI" 3 # Time: 3s
 
     # 2. Enable Required APIs
     log "Enabling required APIs (Cloud Run, Container Registry, Cloud Build)..."
     gcloud services enable run.googleapis.com containerregistry.googleapis.com cloudbuild.googleapis.com --project "$PROJECT_ID" --quiet > /dev/null 2>&1
-    progress_bar "Enabling APIs" 1 # Time: 1s (Increased for accuracy)
+    progress_bar "Enabling APIs" 3 # Time: 3s (Increased for accuracy)
 
     log "Initial GCP setup complete. Proceeding with deployment..."
-    progress_bar "GCP Setup" 1 # Time: 1s
+    progress_bar "GCP Setup" 3 # Time: 3s
 }
 
 # ------------------------------------------------------------------------------
@@ -524,7 +548,7 @@ prepare_config_files() {
     progress_bar "Preparing Config" 10 # Time: 10s
 }
 
-# Share Link Creation (VLESS-WS only)
+# Share Link Creation (VLESS-WS only) - Modified to include time
 create_share_link() {
     local SERVICE_NAME="$1"
     local DOMAIN="$2"
@@ -537,7 +561,10 @@ create_share_link() {
     DOMAIN="${DOMAIN#https://}"
     DOMAIN="${DOMAIN%/}"
     
-    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS"
+    # Include time in the link title
+    local time_suffix="${START_LOCAL// /_}_${END_LOCAL// /_}"
+    time_suffix="${time_suffix//:/-}"  # Replace : with - for URL safety
+    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${time_suffix}"
     
     echo "$LINK"
 }
@@ -616,7 +643,7 @@ deploy_to_cloud_run() {
     selected_info "Service URL: $service_url"
     selected_info "VLESS Share Link: $share_link"
 
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n\n🔗 [VLESS Link]($share_link)"
+    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• Protocol: $PROTOCOL\n• Region: $REGION\n• Service: $SERVICE_NAME\n• UUID: $UUID\n• Start Time: $START_LOCAL\n• End Time: $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
     
     send_deployment_notification "$telegram_message"
 }
@@ -634,7 +661,7 @@ create_project_folder() {
     mv config.json GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
     
     cat > GCP-VLESS-Cloud-Run/deployment-info.txt << EOF
-================================    
+================================
 GCP VLESS Cloud Run Deployment Info
 ================================
 Project ID: $project_id
@@ -651,7 +678,8 @@ Service URL: $service_url
 ================================
 VLESS Share Link: $share_link
 ================================
-Deployment Date: $(date)
+Deployment Date (Asia/Yangon): $START_LOCAL
+Estimated End Time (Asia/Yangon): $END_LOCAL (5 hours)
 ================================
 For more details, check GCP Console: https://console.cloud.google.com/run?project=$project_id
 ================================
@@ -668,10 +696,14 @@ EOF
 # Initialize emojis
 show_emojis
 
+# Initialize Time Variables BEFORE asking for inputs
+initialize_time_variables
+
 # Run user input functions in specified order
 run_user_inputs() {
     # Display main header
     header "${EMOJI_DEPLOY} GCP Cloud Run VLESS Deployment"
+    initialize_time_variables # FIX: Initialize time variables first
     select_telegram_destination
     select_region
     select_cpu
