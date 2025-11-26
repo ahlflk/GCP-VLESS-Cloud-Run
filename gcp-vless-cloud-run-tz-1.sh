@@ -63,8 +63,6 @@ show_emojis() {
     EMOJI_SPINNER="⏳"  # For spinner
     EMOJI_FOLDER="📁"
     EMOJI_LINK="🔗"
-    EMOJI_START="⏰"
-    EMOJI_END="⌛"
 }
 
 # Time Zone Function
@@ -412,7 +410,7 @@ select_uuid() {
 
         if [[ "$uuid_input" == "1" ]]; then
             UUID="$default_uuid"
-            log "Using Default UUID. ✅"
+            log "Using Default UUID: $UUID ✅"
             break
         elif [[ "$uuid_input" == "2" ]]; then
             if command -v uuidgen &> /dev/null; then
@@ -421,7 +419,7 @@ select_uuid() {
                 # Fallback for systems without uuidgen
                 UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "3675119c-14fc-46a4-b5f3-9a2c91a7d802")
                 if [[ "$UUID" == "3675119c-14fc-46a4-b5f3-9a2c91a7d802" ]]; then
-                     warn "uuidgen not found and /proc/sys/kernel/random/uuid is inaccessible. Using default UUID. 🔄"
+                     warn "uuidgen not found and /proc/sys/kernel/random/uuid is inaccessible. Using default UUID: $UUID 🔄"
                 fi
             fi
             log "Generated New UUID: $UUID ✨"
@@ -569,23 +567,22 @@ create_share_link() {
     # Include time in the link title
     local time_suffix="${START_LOCAL// /_}_${END_LOCAL// /_}"
     time_suffix="${time_suffix//:/-}"  # Replace : with - for URL safety
+    
     local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${time_suffix}"
     
     echo "$LINK"
 }
 
-# Telegram Notification Function (Simplified)
+# Telegram Notification Function (Updated for HTML parse_mode)
 send_to_telegram() {
     local chat_id="$1"
     local message="$2"
-    # Escape special Markdown chars, but specifically keep the [link](url) format
-    message=$(echo "$message" | sed 's/\*/\\*/g; s/_/\\_/g; s/`/\\`/g; s/\[🔗 Xray Link\]([^)]*)/[&](/g; s/\[/\\\[/g; s/\]/\\\]/g')
-    # Re-enable the specific link format
-    message=$(echo "$message" | sed 's/\\\[🔗 Xray Link\\\]/\[🔗 Xray Link\]/g')
+    # Escape double quotes for JSON
+    message=$(echo "$message" | sed 's/"/\\"/g')
     
     curl -s -o /dev/null -w "%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"$message\", \"parse_mode\": \"MARKDOWN\", \"disable_web_page_preview\": true}" \
+        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"${message}\", \"parse_mode\": \"HTML\", \"disable_web_page_preview\": true}" \
         https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage
 }
 
@@ -636,9 +633,26 @@ deploy_to_cloud_run() {
 
     log "Deployment completed! 🎉"
     selected_info "Service URL: $service_url"
-    selected_info "VLESS Share Link: $share_link"
+    selected_info "Share Link: $share_link"
 
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• 🌐 Protocol: $PROTOCOL\n• 🗺️ Region: $REGION\n• 🏷️ Service: $SERVICE_NAME\n• 🔑 UUID: $UUID\n• ${EMOJI_START} Start: $START_LOCAL\n• ${EMOJI_END} End: $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
+    # Telegram Message structure (HTML format, VLESS in <code> for easy copy, no "Copy Code" text)
+    local telegram_message="🚀 <b>GCP V2Ray Deployment Complete!</b>
+
+📋 <b>Details:</b>
+
+• <blockquote><b>🔌 Protocol:</b> ${PROTOCOL}
+
+• <b>🗺️ Region:</b> ${REGION}
+
+• <b>💻/💾 CPU/Memory:</b> ${CPU} core(s) / ${MEMORY}</blockquote>
+
+• <blockquote><b>⏰ Start:</b> ${START_LOCAL}
+
+• <b>⌛ End:</b> ${END_LOCAL}</blockquote>
+
+<b>🔗 Share Link:</b>
+
+<pre><code>${share_link}</code></pre>"
     
     send_deployment_notification "$telegram_message"
 }
@@ -649,7 +663,7 @@ create_project_folder() {
     local service_url=$(gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)' --quiet 2>/dev/null)
     local share_link=$(create_share_link "$SERVICE_NAME" "$service_url" "$UUID")
 
-    log "Saving project files and info to folder: GCP-VLESS-Cloud-Run/ 📁"
+    log "Saving project files and info to folder: GCP-VLESS-Cloud-Run/ ${EMOJI_FOLDER}"
     mkdir -p GCP-VLESS-Cloud-Run
     # Move/Copy the generated files into the new folder
     mv Dockerfile GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
@@ -659,31 +673,21 @@ create_project_folder() {
 ================================    
 GCP VLESS Cloud Run Deployment Info
 ================================
-Project ID: $project_id
 Protocol: $PROTOCOL
 Region: $REGION
-CPU: $CPU
-Memory: $MEMORY
-Service Name: $SERVICE_NAME
-Host Domain: $HOST_DOMAIN
-UUID: $UUID
-Path: $VLESS_PATH
+CPU/Memory: $CPU core(s) / $MEMORY
 ================================
-Service URL: $service_url
+⏰ Start Time: $START_LOCAL
+⌛ End Time: $END_LOCAL
 ================================
-${EMOJI_START} Start Time: $START_LOCAL
-${EMOJI_END} End Time: $END_LOCAL
-================================
-VLESS Share Link: $share_link
+Share Link: $share_link
 ================================
 Deployment Date: $(date)
-================================
-For more details, check GCP Console: https://console.cloud.google.com/run?project=$project_id
 ================================
 EOF
     
     log "Project files and info saved successfully in: GCP-VLESS-Cloud-Run/ ${EMOJI_FOLDER}"
-    info "Check the 'GCP-VLESS-Cloud-Run' folder for your deployment files and details. 📂"
+    info "Check the 'GCP-VLESS-Cloud-Run' folder for your deployment files and details. ${EMOJI_FOLDER}"
 }
 
 # ------------------------------------------------------------------------------
