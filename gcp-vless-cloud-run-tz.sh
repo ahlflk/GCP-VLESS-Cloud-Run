@@ -8,17 +8,17 @@ set -euo pipefail
 # 1. GLOBAL VARIABLES & STYLES
 # ------------------------------------------------------------------------------
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[1;32m'
-LIGHT_GREEN='\033[1;92m'
-YELLOW='\033[1;33m'
-ORANGE='\033[0;33m' # Header Color
-BLUE='\033[1;34m'
-CYAN='\033[1;36m'
-WHITE='\033[1;37m'
+# ANSI Color Codes
+BLUE='\033[94m'
 BOLD='\033[1m'
+CYAN='\033[96m'
+GREEN='\033[92m'
+LIGHT_GREEN='\033[1;92m'
 NC='\033[0m' # No Color
+ORANGE='\033[38;5;208m' # Header Color
+RED='\033[91m'
+WHITE='\033[1;37m'
+YELLOW='\033[93m'
 
 # Global Configuration Variables (Defaults) - Hardcoded to VLESS-WS
 PROTOCOL="VLESS-WS"
@@ -63,8 +63,6 @@ show_emojis() {
     EMOJI_SPINNER="⏳"  # For spinner
     EMOJI_FOLDER="📁"
     EMOJI_LINK="🔗"
-    EMOJI_START="⏰"
-    EMOJI_END="⌛"
 }
 
 # Time Zone Function
@@ -483,7 +481,8 @@ show_config_summary() {
                 info "Deployment cancelled by user. 👋"
                 exit 0
                 ;;
-            * ) echo -e "${RED}Please answer yes (y) or no (n).${NC}";;
+            * ) 
+            warn "Please answer yes (y) or no (n).${NC}";;
         esac
     done
 }
@@ -575,18 +574,16 @@ create_share_link() {
     echo "$LINK"
 }
 
-# Telegram Notification Function (Simplified)
+# Telegram Notification Function (Updated for HTML parse_mode)
 send_to_telegram() {
     local chat_id="$1"
     local message="$2"
-    # Escape special Markdown chars, but specifically keep the [link](url) format
-    message=$(echo "$message" | sed 's/\*/\\*/g; s/_/\\_/g; s/`/\\`/g; s/\[🔗 Xray Link\]([^)]*)/[&](/g; s/\[/\\\[/g; s/\]/\\\]/g')
-    # Re-enable the specific link format
-    message=$(echo "$message" | sed 's/\\\[🔗 Xray Link\\\]/\[🔗 Xray Link\]/g')
+    # Escape double quotes for JSON
+    message=$(echo "$message" | sed 's/"/\\"/g')
     
     curl -s -o /dev/null -w "%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"$message\", \"parse_mode\": \"MARKDOWN\", \"disable_web_page_preview\": true}" \
+        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"${message}\", \"parse_mode\": \"HTML\", \"disable_web_page_preview\": true}" \
         https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage
 }
 
@@ -637,9 +634,26 @@ deploy_to_cloud_run() {
 
     log "Deployment completed! 🎉"
     selected_info "Service URL: $service_url"
-    selected_info "VLESS Share Link: $share_link"
+    selected_info "Share Link: $share_link"
 
-    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• 🌐 Protocol: $PROTOCOL\n• 🗺️ Region: $REGION\n• ${EMOJI_START} Start: $START_LOCAL\n• ${EMOJI_END} End: $END_LOCAL\n\n🔗 [VLESS Link]($share_link)"
+    # Telegram Message structure (HTML format, VLESS in <code> for easy copy, no "Copy Code" text)
+    local telegram_message="🚀 <b>GCP V2Ray Deployment Complete!</b>
+
+📋 <b>Details:</b>
+
+• <blockquote><b>🔌 Protocol:</b> ${PROTOCOL}
+
+• <b>🗺️ Region:</b> ${REGION}
+
+• <b>💻/💾 CPU/Memory:</b> ${CPU} core(s) / ${MEMORY}</blockquote>
+
+• <blockquote><b>⏰ Start:</b> ${START_LOCAL}
+
+• <b>⌛ End:</b> ${END_LOCAL}</blockquote>
+
+<b>🔗 Share Link:</b>
+
+<pre><code>${share_link}</code></pre>"
     
     send_deployment_notification "$telegram_message"
 }
@@ -657,22 +671,21 @@ create_project_folder() {
     mv config.json GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
     
     cat > GCP-VLESS-Cloud-Run/deployment-info.txt << EOF
-================================    
+============================== 
 GCP VLESS Cloud Run Deployment Info
-================================
-Project ID: $project_id
+==============================
 Protocol: $PROTOCOL
 Region: $REGION
-CPU: $CPU
-Memory: $MEMORY
-================================
-${EMOJI_START} Start Time: $START_LOCAL
-${EMOJI_END} End Time: $END_LOCAL
-================================
-VLESS Share Link: $share_link
-================================
+CPU/Memory: $CPU core(s) / $MEMORY
+==============================
+⏰ Start Time: $START_LOCAL
+⌛ End Time: $END_LOCAL
+==============================
+Share Link: $share_link
+==============================
+Project ID: $project_id
 Deployment Date: $(date)
-================================
+==============================
 EOF
     
     log "Project files and info saved successfully in: GCP-VLESS-Cloud-Run/ ${EMOJI_FOLDER}"

@@ -8,17 +8,17 @@ set -euo pipefail
 # 1. GLOBAL VARIABLES & STYLES
 # ------------------------------------------------------------------------------
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[1;32m'
-LIGHT_GREEN='\033[1;92m'
-YELLOW='\033[1;33m'
-ORANGE='\033[0;33m' # Header Color
-BLUE='\033[1;34m'
-CYAN='\033[1;36m'
-WHITE='\033[1;37m'
+# ANSI Color Codes
+BLUE='\033[94m'
 BOLD='\033[1m'
+CYAN='\033[96m'
+GREEN='\033[92m'
+LIGHT_GREEN='\033[1;92m'
 NC='\033[0m' # No Color
+ORANGE='\033[38;5;208m' # Header Color
+RED='\033[91m'
+WHITE='\033[1;37m'
+YELLOW='\033[93m'
 
 # Global Configuration Variables (Defaults) - Hardcoded to VLESS-WS
 PROTOCOL="VLESS-WS"
@@ -458,7 +458,8 @@ show_config_summary() {
                 info "Deployment cancelled by user. 👋"
                 exit 0
                 ;;
-            * ) echo -e "${RED}Please answer yes (y) or no (n).${NC}";;
+            * ) 
+            warn "Please answer yes (y) or no (n).${NC}";;
         esac
     done
 }
@@ -639,17 +640,18 @@ create_project_folder() {
     mv config.json GCP-VLESS-Cloud-Run/ > /dev/null 2>&1
     
     cat > GCP-VLESS-Cloud-Run/deployment-info.txt << EOF
-================================
+==============================
 GCP VLESS Cloud Run Deployment Info
-================================
+==============================
 Protocol: $PROTOCOL
 Region: $REGION
 CPU/Memory: $CPU core(s) / $MEMORY
-================================
+==============================
 Share Link: $share_link
-================================
+==============================
+Project ID: $project_id
 Deployment Date: $(date)
-================================
+==============================
 EOF
     
     log "Project files and info saved successfully in: GCP-VLESS-Cloud-Run/ ${EMOJI_FOLDER}"
