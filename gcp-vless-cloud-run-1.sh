@@ -547,16 +547,18 @@ create_share_link() {
     echo "$LINK"
 }
 
-# Telegram Notification Function (Updated for HTML parse_mode)
+# Telegram Notification Function (Simplified)
 send_to_telegram() {
     local chat_id="$1"
     local message="$2"
-    # Escape double quotes for JSON
-    message=$(echo "$message" | sed 's/"/\\"/g')
+    # Escape special Markdown chars, but specifically keep the [link](url) format
+    message=$(echo "$message" | sed 's/\*/\\*/g; s/_/\\_/g; s/`/\\`/g; s/\[🔗 Xray Link\]([^)]*)/[&](/g; s/\[/\\\[/g; s/\]/\\\]/g')
+    # Re-enable the specific link format
+    message=$(echo "$message" | sed 's/\\\[🔗 Xray Link\\\]/\[🔗 Xray Link\]/g')
     
     curl -s -o /dev/null -w "%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"${message}\", \"parse_mode\": \"HTML\", \"disable_web_page_preview\": true}" \
+        -d "{\"chat_id\": \"${chat_id}\", \"text\": \"$message\", \"parse_mode\": \"MARKDOWN\", \"disable_web_page_preview\": true}" \
         https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage
 }
 
@@ -609,20 +611,7 @@ deploy_to_cloud_run() {
     selected_info "Service URL: $service_url"
     selected_info "Share Link: $share_link"
 
-    # Telegram Message structure (HTML format, VLESS in <code> for easy copy, no "Copy Code" text)
-    local telegram_message="🚀 <b>GCP V2Ray Deployment Complete!</b>
-
-📋 <b>Details:</b>
-
-• <blockquote><b>🔌 Protocol:</b> ${PROTOCOL}
-
-• <b>🗺️ Region:</b> ${REGION}
-
-• <b>💻/💾 CPU/Memory:</b> ${CPU} core(s) / ${MEMORY}</blockquote>
-
-<b>🔗 Share Link:</b>
-
-<pre><code>${share_link}</code></pre>"
+    local telegram_message="🚀 *GCP VLESS Deployment Complete!*\n\n📋 *Details:*\n• 🌐 Protocol: $PROTOCOL\n• 🗺️ Region: $REGION\n•\n🔗 [Share Link]($share_link)"
     
     send_deployment_notification "$telegram_message"
 }
@@ -643,13 +632,14 @@ create_project_folder() {
 ==============================
 GCP VLESS Cloud Run Deployment Info
 ==============================
+Project ID: $project_id
 Protocol: $PROTOCOL
 Region: $REGION
-CPU/Memory: $CPU core(s) / $MEMORY
+CPU: $CPU
+Memory: $MEMORY
 ==============================
 Share Link: $share_link
 ==============================
-Project ID: $project_id
 Deployment Date: $(date)
 ==============================
 EOF
