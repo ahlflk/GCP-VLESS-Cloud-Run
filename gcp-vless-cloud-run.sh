@@ -28,7 +28,7 @@ CPU="2"
 MEMORY="2Gi"
 SERVICE_NAME="gcp-ahlflk"
 HOST_DOMAIN="m.googleapis.com"
-VLESS_PATH="/t.me/AHLFLK2025channel"
+VLESS_PATH="/t.me/ahlflk2025channel"
 
 # Telegram Variables (will be set during selection)
 TELEGRAM_DESTINATION="none"

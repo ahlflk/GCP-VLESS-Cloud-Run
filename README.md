@@ -105,7 +105,7 @@ This project is licensed under the **MIT License**.
 
 ## 👤 Author
 
-Made with ❤️ by [AHLFLK2025channel](https://t.me/AHLFLK2025channel)
+Made with ❤️ by [AHLFLK2025channel](https://t.me/ahlflk2025channel)
 
 ---
 
