@@ -569,7 +569,7 @@ create_share_link() {
     local time_suffix="${START_LOCAL// /_}_${END_LOCAL// /_}"
     time_suffix="${time_suffix//:/-}"  # Replace : with - for URL safety
     
-    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&fp=randomized&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${time_suffix}"
+    local LINK="vless://${UUID}@${HOST_DOMAIN}:443?path=${PATH_ENCODED}&security=tls&encryption=none&host=${DOMAIN}&type=ws&sni=${DOMAIN}#${SERVICE_NAME}_VLESS-WS_${time_suffix}"
     
     echo "$LINK"
 }
