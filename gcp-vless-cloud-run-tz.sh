@@ -24,8 +24,8 @@ YELLOW='\033[93m'
 PROTOCOL="VLESS-WS"
 UUID=""
 REGION="us-central1"
-CPU="2"
-MEMORY="2Gi"
+CPU="1"
+MEMORY="1Gi"
 SERVICE_NAME="gcp-ahlflk"
 HOST_DOMAIN="m.googleapis.com"
 VLESS_PATH="/t.me/ahlflk2025channel"
@@ -300,16 +300,16 @@ select_region() {
 select_cpu() {
     header "🖥️  CPU Configuration"
     echo -e "${CYAN}Available Options:${NC}"
-    echo -e "${BOLD}1.${NC} 1  CPU Core (Lightweight traffic)"
-    echo -e "${BOLD}2.${NC} 2  CPU Cores (Balanced) ${GREEN}[DEFAULT]${NC}"
+    echo -e "${BOLD}1.${NC} 1  CPU Core (Lightweight traffic) ${GREEN}[DEFAULT]${NC}"
+    echo -e "${BOLD}2.${NC} 2  CPU Cores (Balanced)"
     echo -e "${BOLD}3.${NC} 4  CPU Cores (Performance)"
     echo -e "${BOLD}4.${NC} 8  CPU Cores (High Performance)"
     echo -e "${BOLD}5.${NC} 16 CPU Cores (Extreme Load)" 
     echo
     
     while true; do
-        read -p "Select CPU cores (2): " cpu_choice
-        cpu_choice=${cpu_choice:-2}
+        read -p "Select CPU cores (1): " cpu_choice
+        cpu_choice=${cpu_choice:-1}
         case $cpu_choice in
             1) CPU="1"; break ;;
             2) CPU="2"; break ;;
@@ -329,8 +329,8 @@ select_memory() {
     header "💾 Memory Configuration"    
     echo -e "${CYAN}Available Options:${NC}"
     echo -e "${BOLD}1.${NC} 512Mi (Minimum requirement)"
-    echo -e "${BOLD}2.${NC} 1Gi (Basic usage)"
-    echo -e "${BOLD}3.${NC} 2Gi (Balanced usage) ${GREEN}[DEFAULT]${NC}"
+    echo -e "${BOLD}2.${NC} 1Gi (Basic usage) ${GREEN}[DEFAULT]${NC}"
+    echo -e "${BOLD}3.${NC} 2Gi (Balanced usage)"
     echo -e "${BOLD}4.${NC} 4Gi (Moderate performance)"
     echo -e "${BOLD}5.${NC} 8Gi (High load/many connections)"
     echo -e "${BOLD}6.${NC} 16Gi (Advanced/Extreme load)"
@@ -338,8 +338,8 @@ select_memory() {
     echo
     
     while true; do
-        read -p "Select memory (3): " memory_choice
-        memory_choice=${memory_choice:-3}
+        read -p "Select memory (2): " memory_choice
+        memory_choice=${memory_choice:-2}
         case $memory_choice in
             1) MEMORY="512Mi"; break ;;
             2) MEMORY="1Gi"; break ;;
